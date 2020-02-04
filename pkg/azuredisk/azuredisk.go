@@ -35,7 +35,8 @@ import (
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/util/mount"
 	"k8s.io/kubernetes/pkg/volume/util"
-	"k8s.io/legacy-cloud-providers/azure"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azure"
+	//"k8s.io/legacy-cloud-providers/azure"
 )
 
 const (
