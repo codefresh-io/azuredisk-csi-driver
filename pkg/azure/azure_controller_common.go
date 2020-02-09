@@ -159,8 +159,8 @@ func (c *controllerCommon) AttachDisk(isManagedDisk bool, diskName, diskURI stri
 		return -1, fmt.Errorf("failed to get azure instance id for node %q (%v)", nodeName, err)
 	}
 
-	// c.vmLockMap.LockEntry(strings.ToLower(string(nodeName)))
-	// defer c.vmLockMap.UnlockEntry(strings.ToLower(string(nodeName)))
+	c.vmLockMap.LockEntry(strings.ToLower(string(nodeName)))
+	defer c.vmLockMap.UnlockEntry(strings.ToLower(string(nodeName)))
 
 	lun, err := c.AcquireNextDiskLun(nodeName)
 	if err != nil {
@@ -198,7 +198,11 @@ func (c *controllerCommon) DetachDisk(diskName, diskURI string, nodeName types.N
 	// make the lock here as small as possible
 	c.vmLockMap.LockEntry(strings.ToLower(string(nodeName)))
 	c.diskAttachDetachMap.Store(strings.ToLower(diskURI), "detaching")
+	c.vmLockMap.UnlockEntry(strings.ToLower(string(nodeName)))
+
 	err = vmset.DetachDisk(diskName, diskURI, nodeName)
+
+	c.vmLockMap.LockEntry(strings.ToLower(string(nodeName)))
 	c.diskAttachDetachMap.Delete(strings.ToLower(diskURI))
 	c.vmLockMap.UnlockEntry(strings.ToLower(string(nodeName)))
 
@@ -207,7 +211,11 @@ func (c *controllerCommon) DetachDisk(diskName, diskURI string, nodeName types.N
 		retryErr := kwait.ExponentialBackoff(c.cloud.RequestBackoff(), func() (bool, error) {
 			c.vmLockMap.LockEntry(strings.ToLower(string(nodeName)))
 			c.diskAttachDetachMap.Store(strings.ToLower(diskURI), "detaching")
+			c.vmLockMap.UnlockEntry(strings.ToLower(string(nodeName)))
+
 			err := vmset.DetachDisk(diskName, diskURI, nodeName)
+			
+			c.vmLockMap.LockEntry(strings.ToLower(string(nodeName)))
 			c.diskAttachDetachMap.Delete(strings.ToLower(diskURI))
 			c.vmLockMap.UnlockEntry(strings.ToLower(string(nodeName)))
 
@@ -270,9 +278,6 @@ func (c *controllerCommon) GetDiskLun(diskName, diskURI string, nodeName types.N
 // AcquireNextDiskLun searches all vhd attachment on the host and find unused and unlocked lun.
 //    Locks and returns lun. Return -1 if all luns are used.
 func (c *controllerCommon) AcquireNextDiskLun(nodeName types.NodeName) (int32, error) {
-
-	c.vmLockMap.LockEntry(strings.ToLower(string(nodeName)))
-	defer c.vmLockMap.UnlockEntry(strings.ToLower(string(nodeName)))
 
 	disks, err := c.getNodeDataDisks(nodeName, cacheReadTypeDefault)
 	if err != nil {

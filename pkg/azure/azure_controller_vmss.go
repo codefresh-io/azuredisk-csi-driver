@@ -107,7 +107,7 @@ func (ss *scaleSet) AttachDisk(isManagedDisk bool, diskName, diskURI string, nod
 			klog.Infof("azureDisk - err %s, try detach disk(%s, %s)", detail, diskName, diskURI)
 			ss.DetachDisk(diskName, diskURI, nodeName)
 		}
-
+    ss.controllerCommon.vmLockMap.DeleteEntry(LunLockKey(string(nodeName), int(lun)))
 		return rerr.Error()
 	}
 
@@ -116,7 +116,7 @@ func (ss *scaleSet) AttachDisk(isManagedDisk bool, diskName, diskURI string, nod
 			waitCtx, waitCtxCancel := getContextWithCancel()
 			defer waitCtxCancel()
 			defer ss.controllerCommon.vmLockMap.DeleteEntry(LunLockKey(string(nodeName), int(lun)))
-
+			defer ss.deleteCacheForNode(vmName)
 			_ = ss.VirtualMachineScaleSetVMsClient.FutureWaitForCompletion(waitCtx, future)
 		}()
 		
@@ -145,6 +145,7 @@ func (ss *scaleSet) DetachDisk(diskName, diskURI string, nodeName types.NodeName
 		disks = filterDetachingDisks(*vm.StorageProfile.DataDisks)
 	}
 	bFoundDisk := false
+	var lun int32
 	for i, disk := range disks {
 		if disk.Lun != nil && (disk.Name != nil && diskName != "" && strings.EqualFold(*disk.Name, diskName)) ||
 			(disk.Vhd != nil && disk.Vhd.URI != nil && diskURI != "" && strings.EqualFold(*disk.Vhd.URI, diskURI)) ||
@@ -153,6 +154,7 @@ func (ss *scaleSet) DetachDisk(diskName, diskURI string, nodeName types.NodeName
 			klog.V(2).Infof("azureDisk - detach disk: name %q uri %q", diskName, diskURI)
 			disks = append(disks[:i], disks[i+1:]...)
 			bFoundDisk = true
+			lun = *disk.Lun
 			break
 		}
 	}
@@ -160,6 +162,9 @@ func (ss *scaleSet) DetachDisk(diskName, diskURI string, nodeName types.NodeName
 	if !bFoundDisk {
 		// only log here, next action is to update VM status with original meta data
 		klog.Errorf("detach azure disk: disk %s not found, diskURI: %s", diskName, diskURI)
+	}
+	if lun > 0 {
+		ss.controllerCommon.vmLockMap.TryEntry(LunLockKey(string(nodeName), int(lun)))
 	}
 
 	newVM := compute.VirtualMachineScaleSetVM{
@@ -181,11 +186,22 @@ func (ss *scaleSet) DetachDisk(diskName, diskURI string, nodeName types.NodeName
 	defer ss.deleteCacheForNode(vmName)
 
 	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - detach disk(%s, %s)", nodeResourceGroup, nodeName, diskName, diskURI)
-	rerr := ss.VirtualMachineScaleSetVMsClient.Update(ctx, nodeResourceGroup, ssName, instanceID, newVM, "detach_disk")
+	future, rerr := ss.VirtualMachineScaleSetVMsClient.UpdateFuture(ctx, nodeResourceGroup, ssName, instanceID, newVM, "detach_disk")
+
 	if rerr != nil {
+		ss.controllerCommon.vmLockMap.DeleteEntry(LunLockKey(string(nodeName), int(lun)))
 		return rerr.Error()
 	}
 
+	if future != nil {
+		go func() {
+			waitCtx, waitCtxCancel := getContextWithCancel()
+			defer waitCtxCancel()
+			defer ss.controllerCommon.vmLockMap.DeleteEntry(LunLockKey(string(nodeName), int(lun)))
+			defer ss.deleteCacheForNode(vmName)
+			_ = ss.VirtualMachineScaleSetVMsClient.FutureWaitForCompletion(waitCtx, future)
+		}()
+	}
 	return nil
 }
 
