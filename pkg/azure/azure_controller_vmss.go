@@ -20,6 +20,8 @@ package azure
 
 import (
 	"strings"
+	"context"
+	"fmt"
 
 	"github.com/Azure/azure-sdk-for-go/services/compute/mgmt/2019-07-01/compute"
 
@@ -97,7 +99,8 @@ func (ss *scaleSet) AttachDisk(isManagedDisk bool, diskName, diskURI string, nod
 	// Invalidate the cache right after updating
 	defer ss.deleteCacheForNode(vmName)
 
-	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - attach disk(%s, %s) with DiskEncryptionSetID(%s)", nodeResourceGroup, nodeName, diskName, diskURI, diskEncryptionSetID)
+	operationName := fmt.Sprintf("azureDisk - update(%s): vm(%s) - attach disk(%s, %s) with DiskEncryptionSetID(%s)", nodeResourceGroup, nodeName, diskName, diskURI, diskEncryptionSetID)
+	klog.V(2).Infof(operationName)
 	future, rerr := ss.VirtualMachineScaleSetVMsClient.UpdateFuture(ctx, nodeResourceGroup, ssName, instanceID, newVM, "attach_disk")
 		
 	if rerr != nil {
@@ -106,14 +109,16 @@ func (ss *scaleSet) AttachDisk(isManagedDisk bool, diskName, diskURI string, nod
 			// if lease cannot be acquired or disk not found, immediately detach the disk and return the original error
 			klog.Infof("azureDisk - err %s, try detach disk(%s, %s)", detail, diskName, diskURI)
 			ss.DetachDisk(diskName, diskURI, nodeName)
+		} else {
+			defer ss.controllerCommon.vmLockMap.DeleteEntry(LunLockKey(string(nodeName), int(lun)))
 		}
-    ss.controllerCommon.vmLockMap.DeleteEntry(LunLockKey(string(nodeName), int(lun)))
 		return rerr.Error()
 	}
 
 	if future != nil {
 		go func() {
 			waitCtx, waitCtxCancel := getContextWithCancel()
+			waitCtx = context.WithValue(waitCtx, "Operation", operationName)
 			defer waitCtxCancel()
 			defer ss.controllerCommon.vmLockMap.DeleteEntry(LunLockKey(string(nodeName), int(lun)))
 			defer ss.deleteCacheForNode(vmName)
@@ -185,22 +190,26 @@ func (ss *scaleSet) DetachDisk(diskName, diskURI string, nodeName types.NodeName
 	// Invalidate the cache right after updating
 	defer ss.deleteCacheForNode(vmName)
 
-	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - detach disk(%s, %s)", nodeResourceGroup, nodeName, diskName, diskURI)
+	operationName := fmt.Sprintf("azureDisk - update(%s): vm(%s) - detach disk(%s, %s)", nodeResourceGroup, nodeName, diskName, diskURI)
+	klog.V(2).Infof(operationName)
 	future, rerr := ss.VirtualMachineScaleSetVMsClient.UpdateFuture(ctx, nodeResourceGroup, ssName, instanceID, newVM, "detach_disk")
 
 	if rerr != nil {
-		ss.controllerCommon.vmLockMap.DeleteEntry(LunLockKey(string(nodeName), int(lun)))
+		defer ss.controllerCommon.vmLockMap.DeleteEntry(LunLockKey(string(nodeName), int(lun)))
 		return rerr.Error()
 	}
 
 	if future != nil {
 		go func() {
 			waitCtx, waitCtxCancel := getContextWithCancel()
+			waitCtx = context.WithValue(waitCtx, "Operation", operationName)
 			defer waitCtxCancel()
 			defer ss.controllerCommon.vmLockMap.DeleteEntry(LunLockKey(string(nodeName), int(lun)))
 			defer ss.deleteCacheForNode(vmName)
 			_ = ss.VirtualMachineScaleSetVMsClient.FutureWaitForCompletion(waitCtx, future)
 		}()
+	} else {
+    defer ss.controllerCommon.vmLockMap.DeleteEntry(LunLockKey(string(nodeName), int(lun)))
 	}
 	return nil
 }

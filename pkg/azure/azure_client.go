@@ -1189,9 +1189,9 @@ func (az *azVirtualMachineScaleSetVMsClient) UpdateFuture(ctx context.Context, r
 		return nil, createRateLimitErr(true, "VMSSVMUpdate")
 	}
 
-	klog.V(4).Infof("azVirtualMachineScaleSetVMsClient.UpdateFuture(%q,%q,%q): start", resourceGroupName, VMScaleSetName, instanceID)
+	klog.V(2).Infof("azVirtualMachineScaleSetVMsClient.UpdateFuture(%q,%q,%q): start", resourceGroupName, VMScaleSetName, instanceID)
 	defer func() {
-		klog.V(4).Infof("azVirtualMachineScaleSetVMsClient.UpdateFuture(%q,%q,%q): end", resourceGroupName, VMScaleSetName, instanceID)
+		klog.V(2).Infof("azVirtualMachineScaleSetVMsClient.UpdateFuture(%q,%q,%q): end", resourceGroupName, VMScaleSetName, instanceID)
 	}()
 
 	future, err := az.client.Update(ctx, resourceGroupName, VMScaleSetName, instanceID, parameters)
@@ -1199,6 +1199,19 @@ func (az *azVirtualMachineScaleSetVMsClient) UpdateFuture(ctx context.Context, r
 }
 
 func (az *azVirtualMachineScaleSetVMsClient) FutureWaitForCompletion(ctx context.Context, future *compute.VirtualMachineScaleSetVMsUpdateFuture) error {
+	klog.V(2).Infof("azVirtualMachineScaleSetVMsClient.FutureWaitForCompletion: start - %v ", ctx.Value("Operation"))
+	defer func() {
+		resp := future.Response()
+		logMsg := fmt.Sprintf("azVirtualMachineScaleSetVMsClient.FutureWaitForCompletion: end - %v", ctx.Value("Operation"))
+		if resp == nil {
+			klog.Errorf("%s - nil response", logMsg)
+		} else if 199 < resp.StatusCode && resp.StatusCode < 300 {
+      klog.V(2).Infof("%s - Success", logMsg)
+		} else {
+			klog.Errorf("%s - %v", logMsg, resp)
+		}
+		
+	}()
 	return future.WaitForCompletionRef(ctx, az.client.Client)
 }
 

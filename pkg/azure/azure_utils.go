@@ -21,11 +21,12 @@ package azure
 import (
 	"sync"
 	"fmt"
+	"k8s.io/klog"
 )
 
 // LunLockKey - returns node+lun key for lockMap
 func LunLockKey(nodeName string, lun int) string {
-  return fmt.Sprintf("%s-lun%d", nodeName, lun)
+  return fmt.Sprintf("%s-lun-%d", nodeName, lun)
 }
 
 // lockMap used to lock on entries
@@ -44,6 +45,7 @@ func newLockMap() *lockMap {
 // LockEntry acquires a lock associated with the specific entry
 func (lm *lockMap) LockEntry(entry string) {
 	lm.Lock()
+	klog.V(4).Infof("LockEntry %s", entry)
 	// check if entry does not exists, then add entry
 	if _, exists := lm.mutexMap[entry]; !exists {
 		lm.addEntry(entry)
@@ -59,9 +61,11 @@ func (lm *lockMap) TryEntry(entry string) bool {
 	lm.Lock()
 	defer lm.Unlock()
 	if _, exists := lm.mutexMap[entry]; exists {
+		klog.V(4).Infof("TryEntry %s - already locked", entry)
 		return false
 	}
 	lm.addEntry(entry)
+	klog.V(4).Infof("TryEntry %s - success", entry)
 	return true
 }
 
@@ -70,11 +74,13 @@ func (lm *lockMap) TryEntry(entry string) bool {
 func (lm *lockMap) DeleteEntry(entry string) bool {
 	lm.Lock()
 	defer lm.Unlock()
-	if _, exists := lm.mutexMap[entry]; exists {
-		delete(lm.mutexMap, entry)
-		return true
+	if _, exists := lm.mutexMap[entry]; !exists {
+		klog.V(4).Infof("DeleteEntry %s - entry does not exists", entry)
+    return false
 	}
-	return false
+	delete(lm.mutexMap, entry)
+	klog.V(4).Infof("DeleteEntry %s - deleted", entry)
+	return true
 }
 
 // UnlockEntry release the lock associated with the specific entry
@@ -83,9 +89,11 @@ func (lm *lockMap) UnlockEntry(entry string) {
 	defer lm.Unlock()
 
 	if _, exists := lm.mutexMap[entry]; !exists {
+		klog.V(4).Infof("UnlockEntry %s - entry does not exists", entry)
 		return
 	}
 	lm.unlockEntry(entry)
+	klog.V(4).Infof("UnlockEntry %s - unlocked", entry)
 }
 
 func (lm *lockMap) addEntry(entry string) {

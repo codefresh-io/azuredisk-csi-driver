@@ -198,11 +198,9 @@ func (c *controllerCommon) DetachDisk(diskName, diskURI string, nodeName types.N
 	// make the lock here as small as possible
 	c.vmLockMap.LockEntry(strings.ToLower(string(nodeName)))
 	c.diskAttachDetachMap.Store(strings.ToLower(diskURI), "detaching")
-	c.vmLockMap.UnlockEntry(strings.ToLower(string(nodeName)))
-
+	
 	err = vmset.DetachDisk(diskName, diskURI, nodeName)
 
-	c.vmLockMap.LockEntry(strings.ToLower(string(nodeName)))
 	c.diskAttachDetachMap.Delete(strings.ToLower(diskURI))
 	c.vmLockMap.UnlockEntry(strings.ToLower(string(nodeName)))
 
@@ -211,11 +209,9 @@ func (c *controllerCommon) DetachDisk(diskName, diskURI string, nodeName types.N
 		retryErr := kwait.ExponentialBackoff(c.cloud.RequestBackoff(), func() (bool, error) {
 			c.vmLockMap.LockEntry(strings.ToLower(string(nodeName)))
 			c.diskAttachDetachMap.Store(strings.ToLower(diskURI), "detaching")
-			c.vmLockMap.UnlockEntry(strings.ToLower(string(nodeName)))
-
+			
 			err := vmset.DetachDisk(diskName, diskURI, nodeName)
 			
-			c.vmLockMap.LockEntry(strings.ToLower(string(nodeName)))
 			c.diskAttachDetachMap.Delete(strings.ToLower(diskURI))
 			c.vmLockMap.UnlockEntry(strings.ToLower(string(nodeName)))
 
