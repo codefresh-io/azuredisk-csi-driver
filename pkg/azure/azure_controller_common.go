@@ -44,6 +44,9 @@ const (
 	maxDisksPerStorageAccounts             = 60
 	storageAccountUtilizationBeforeGrowing = 0.5
 
+	// Lun Lock timeout
+	lunLockTimeout                         = 600
+
 	maxLUN               = 64 // max number of LUNs per VM
 	errLeaseFailed       = "AcquireDiskLeaseFailed"
 	errLeaseIDMissing    = "LeaseIdMissing"
@@ -156,10 +159,10 @@ func (c *controllerCommon) AttachDisk(isManagedDisk bool, diskName, diskURI stri
 		return -1, fmt.Errorf("failed to get azure instance id for node %q (%v)", nodeName, err)
 	}
 
-	c.vmLockMap.LockEntry(strings.ToLower(string(nodeName)))
-	defer c.vmLockMap.UnlockEntry(strings.ToLower(string(nodeName)))
+	// c.vmLockMap.LockEntry(strings.ToLower(string(nodeName)))
+	// defer c.vmLockMap.UnlockEntry(strings.ToLower(string(nodeName)))
 
-	lun, err := c.GetNextDiskLun(nodeName)
+	lun, err := c.AcquireNextDiskLun(nodeName)
 	if err != nil {
 		klog.Warningf("no LUN available for instance %q (%v)", nodeName, err)
 		return -1, fmt.Errorf("all LUNs are used, cannot attach volume (%s, %s) to instance %q (%v)", diskName, diskURI, instanceid, err)
@@ -264,8 +267,13 @@ func (c *controllerCommon) GetDiskLun(diskName, diskURI string, nodeName types.N
 	return -1, fmt.Errorf("cannot find Lun for disk %s", diskName)
 }
 
-// GetNextDiskLun searches all vhd attachment on the host and find unused lun. Return -1 if all luns are used.
-func (c *controllerCommon) GetNextDiskLun(nodeName types.NodeName) (int32, error) {
+// AcquireNextDiskLun searches all vhd attachment on the host and find unused and unlocked lun.
+//    Locks and returns lun. Return -1 if all luns are used.
+func (c *controllerCommon) AcquireNextDiskLun(nodeName types.NodeName) (int32, error) {
+
+	c.vmLockMap.LockEntry(strings.ToLower(string(nodeName)))
+	defer c.vmLockMap.UnlockEntry(strings.ToLower(string(nodeName)))
+
 	disks, err := c.getNodeDataDisks(nodeName, cacheReadTypeDefault)
 	if err != nil {
 		klog.Errorf("error of getting data disks for node %q: %v", nodeName, err)
@@ -279,7 +287,7 @@ func (c *controllerCommon) GetNextDiskLun(nodeName types.NodeName) (int32, error
 		}
 	}
 	for k, v := range used {
-		if !v {
+		if !v && c.vmLockMap.TryEntry(LunLockKey(string(nodeName), k)) {
 			return int32(k), nil
 		}
 	}

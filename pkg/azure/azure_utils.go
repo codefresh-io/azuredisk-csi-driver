@@ -20,7 +20,13 @@ package azure
 
 import (
 	"sync"
+	"fmt"
 )
+
+// LunLockKey - returns node+lun key for lockMap
+func LunLockKey(nodeName string, lun int) string {
+  return fmt.Sprintf("%s-lun%d", nodeName, lun)
+}
 
 // lockMap used to lock on entries
 type lockMap struct {
@@ -45,6 +51,30 @@ func (lm *lockMap) LockEntry(entry string) {
 
 	lm.Unlock()
 	lm.lockEntry(entry)
+}
+
+// TryEntry - checks if lm.mutexMap[entry] is empty, inserts the entry and return true
+//            returns false if if lm.mutexMap[entry] is not empty
+func (lm *lockMap) TryEntry(entry string) bool {
+	lm.Lock()
+	defer lm.Unlock()
+	if _, exists := lm.mutexMap[entry]; exists {
+		return false
+	}
+	lm.addEntry(entry)
+	return true
+}
+
+// DeleteEntry - checks if lm.mutexMap[entry] exists and delete it 
+//            returns false if if lm.mutexMap[entry] does not exists
+func (lm *lockMap) DeleteEntry(entry string) bool {
+	lm.Lock()
+	defer lm.Unlock()
+	if _, exists := lm.mutexMap[entry]; exists {
+		delete(lm.mutexMap, entry)
+		return true
+	}
+	return false
 }
 
 // UnlockEntry release the lock associated with the specific entry

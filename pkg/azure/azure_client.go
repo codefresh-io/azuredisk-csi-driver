@@ -111,6 +111,8 @@ type VirtualMachineScaleSetVMsClient interface {
 	Get(ctx context.Context, resourceGroupName string, VMScaleSetName string, instanceID string, expand compute.InstanceViewTypes) (result compute.VirtualMachineScaleSetVM, rerr *retry.Error)
 	List(ctx context.Context, resourceGroupName string, virtualMachineScaleSetName string, filter string, selectParameter string, expand string) (result []compute.VirtualMachineScaleSetVM, rerr *retry.Error)
 	Update(ctx context.Context, resourceGroupName string, VMScaleSetName string, instanceID string, parameters compute.VirtualMachineScaleSetVM, source string) *retry.Error
+	UpdateFuture(ctx context.Context, resourceGroupName string, VMScaleSetName string, instanceID string, parameters compute.VirtualMachineScaleSetVM, source string) (*compute.VirtualMachineScaleSetVMsUpdateFuture, *retry.Error)
+  FutureWaitForCompletion(ctx context.Context, future *compute.VirtualMachineScaleSetVMsUpdateFuture) error
 }
 
 // RoutesClient defines needed functions for azure network.RoutesClient
@@ -1175,11 +1177,29 @@ func (az *azVirtualMachineScaleSetVMsClient) Update(ctx context.Context, resourc
 		return retry.GetError(future.Response(), mc.Observe(err))
 	}
 
-	// we skip Azure WaitForCompletion for attach_disk
-	if source != "attach_disk" {
-		err = future.WaitForCompletionRef(ctx, az.client.Client)
-	}
+	err = future.WaitForCompletionRef(ctx, az.client.Client)
 	return retry.GetError(future.Response(), mc.Observe(err))
+}
+
+// UpdateFuture - calls az.client.Update and returns as is - in attach/detach we need to WaitForCompletionRef depending in background with lun lock handling
+func (az *azVirtualMachineScaleSetVMsClient) UpdateFuture(ctx context.Context, resourceGroupName string, VMScaleSetName string, instanceID string, parameters compute.VirtualMachineScaleSetVM, source string) (*compute.VirtualMachineScaleSetVMsUpdateFuture, *retry.Error){
+	mc := newMetricContext("vmssvm", "create_or_update", resourceGroupName, az.client.SubscriptionID, source)
+	if !az.rateLimiterWriter.TryAccept() {
+		mc.RateLimitedCount()
+		return nil, createRateLimitErr(true, "VMSSVMUpdate")
+	}
+
+	klog.V(4).Infof("azVirtualMachineScaleSetVMsClient.UpdateFuture(%q,%q,%q): start", resourceGroupName, VMScaleSetName, instanceID)
+	defer func() {
+		klog.V(4).Infof("azVirtualMachineScaleSetVMsClient.UpdateFuture(%q,%q,%q): end", resourceGroupName, VMScaleSetName, instanceID)
+	}()
+
+	future, err := az.client.Update(ctx, resourceGroupName, VMScaleSetName, instanceID, parameters)
+  return &future, retry.GetError(future.Response(), mc.Observe(err))
+}
+
+func (az *azVirtualMachineScaleSetVMsClient) FutureWaitForCompletion(ctx context.Context, future *compute.VirtualMachineScaleSetVMsUpdateFuture) error {
+	return future.WaitForCompletionRef(ctx, az.client.Client)
 }
 
 // azRoutesClient implements RoutesClient.

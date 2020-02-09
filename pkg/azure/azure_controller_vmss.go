@@ -98,7 +98,8 @@ func (ss *scaleSet) AttachDisk(isManagedDisk bool, diskName, diskURI string, nod
 	defer ss.deleteCacheForNode(vmName)
 
 	klog.V(2).Infof("azureDisk - update(%s): vm(%s) - attach disk(%s, %s) with DiskEncryptionSetID(%s)", nodeResourceGroup, nodeName, diskName, diskURI, diskEncryptionSetID)
-	rerr := ss.VirtualMachineScaleSetVMsClient.Update(ctx, nodeResourceGroup, ssName, instanceID, newVM, "attach_disk")
+	future, rerr := ss.VirtualMachineScaleSetVMsClient.UpdateFuture(ctx, nodeResourceGroup, ssName, instanceID, newVM, "attach_disk")
+		
 	if rerr != nil {
 		detail := rerr.Error().Error()
 		if strings.Contains(detail, errLeaseFailed) || strings.Contains(detail, errDiskBlobNotFound) {
@@ -108,6 +109,17 @@ func (ss *scaleSet) AttachDisk(isManagedDisk bool, diskName, diskURI string, nod
 		}
 
 		return rerr.Error()
+	}
+
+	if future != nil {
+		go func() {
+			waitCtx, waitCtxCancel := getContextWithCancel()
+			defer waitCtxCancel()
+			defer ss.controllerCommon.vmLockMap.DeleteEntry(LunLockKey(string(nodeName), int(lun)))
+
+			_ = ss.VirtualMachineScaleSetVMsClient.FutureWaitForCompletion(waitCtx, future)
+		}()
+		
 	}
 
 	klog.V(2).Infof("azureDisk - attach disk(%s, %s) succeeded", diskName, diskURI)
