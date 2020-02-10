@@ -14,6 +14,7 @@ Issue: https://github.com/kubernetes-sigs/azuredisk-csi-driver/issues/269
 2. Introducing locks on Node+Lun level - changing azure_controller_common.go to call AcquireNextDiskLun instead of GetNextDiskLun and adding code to lockMap azure_utils.go 
 3. separate WaitForCompletion from Update call AzureVMSS in pkg/azure/azure_client.go - func (az *azVirtualMachineScaleSetVMsClient) UpdateFuture and FutureWaitForCompletion
 4. in pkg/azure/azure_controller_vmss.go on both attach/detach we call FutureWaitForCompletion in goroutine to be continue executing after Conptroller(Un)PublishVolume exits. 
+5. non-vmss instances - to be done
 
 ##### node code changes
 1. on findDiskAndLun (pkg/nodeserver.go) we wait with 2m timeout until device is added to the node so kubelet will wait intead of retry with exp. backoff
