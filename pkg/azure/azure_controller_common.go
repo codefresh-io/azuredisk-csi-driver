@@ -54,6 +54,7 @@ const (
 	errDiskBlobNotFound  = "DiskBlobNotFound"
 	sourceSnapshot       = "snapshot"
 	sourceVolume         = "volume"
+	operationCtxKey      = "Operation"
 
 	// see https://docs.microsoft.com/en-us/rest/api/compute/disks/createorupdate#create-a-managed-disk-by-copying-a-snapshot.
 	diskSnapshotPath = "/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/snapshots/%s"
@@ -198,7 +199,7 @@ func (c *controllerCommon) DetachDisk(diskName, diskURI string, nodeName types.N
 	// make the lock here as small as possible
 	c.vmLockMap.LockEntry(strings.ToLower(string(nodeName)))
 	c.diskAttachDetachMap.Store(strings.ToLower(diskURI), "detaching")
-	
+
 	err = vmset.DetachDisk(diskName, diskURI, nodeName)
 
 	c.diskAttachDetachMap.Delete(strings.ToLower(diskURI))

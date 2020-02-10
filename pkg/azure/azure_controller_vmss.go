@@ -168,7 +168,7 @@ func (ss *scaleSet) DetachDisk(diskName, diskURI string, nodeName types.NodeName
 		// only log here, next action is to update VM status with original meta data
 		klog.Errorf("detach azure disk: disk %s not found, diskURI: %s", diskName, diskURI)
 	}
-	if lun > 0 {
+	if bFoundDisk {
 		ss.controllerCommon.vmLockMap.TryEntry(LunLockKey(string(nodeName), int(lun)))
 	}
 
@@ -195,21 +195,25 @@ func (ss *scaleSet) DetachDisk(diskName, diskURI string, nodeName types.NodeName
 	future, rerr := ss.VirtualMachineScaleSetVMsClient.UpdateFuture(ctx, nodeResourceGroup, ssName, instanceID, newVM, "detach_disk")
 
 	if rerr != nil {
-		defer ss.controllerCommon.vmLockMap.DeleteEntry(LunLockKey(string(nodeName), int(lun)))
+		if bFoundDisk {
+			defer ss.controllerCommon.vmLockMap.DeleteEntry(LunLockKey(string(nodeName), int(lun)))
+		}
 		return rerr.Error()
 	}
 
 	if future != nil {
 		go func() {
 			waitCtx, waitCtxCancel := getContextWithCancel()
-			waitCtx = context.WithValue(waitCtx, "Operation", operationName)
+			waitCtx = context.WithValue(waitCtx, operationCtxKey, operationName)
 			defer waitCtxCancel()
 			defer ss.controllerCommon.vmLockMap.DeleteEntry(LunLockKey(string(nodeName), int(lun)))
 			defer ss.deleteCacheForNode(vmName)
 			_ = ss.VirtualMachineScaleSetVMsClient.FutureWaitForCompletion(waitCtx, future)
 		}()
 	} else {
-    defer ss.controllerCommon.vmLockMap.DeleteEntry(LunLockKey(string(nodeName), int(lun)))
+		if bFoundDisk {
+			defer ss.controllerCommon.vmLockMap.DeleteEntry(LunLockKey(string(nodeName), int(lun)))
+		}
 	}
 	return nil
 }
