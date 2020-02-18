@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"sync"
 	"time"
-
+	"k8s.io/klog"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -97,8 +97,12 @@ func (t *timedCache) getInternal(key string) (*cacheEntry, error) {
 
 	// lock here to ensure if entry doesn't exist, we add a new entry
 	// avoiding overwrites
+	klog.V(10).Infof("getInternal - LockKey %s", key)
 	t.lock.Lock()
-	defer t.lock.Unlock()
+	defer func() {
+		t.lock.Unlock()
+		klog.V(10).Infof("getInternal - UnLockKey %s", key)
+	}()
 
 	// Still not found, add new entry with nil data.
 	// Note the data will be filled later by getter.
@@ -117,8 +121,12 @@ func (t *timedCache) Get(key string, crt cacheReadType) (interface{}, error) {
 		return nil, err
 	}
 
-	entry.lock.Lock()
-	defer entry.lock.Unlock()
+	klog.V(10).Infof("Get - LockKey %s", key)
+	t.lock.Lock()
+	defer func() {
+		t.lock.Unlock()
+		klog.V(10).Infof("Get - UnLockKey %s", key)
+	}()
 
 	// entry exists
 	if entry.data != nil {

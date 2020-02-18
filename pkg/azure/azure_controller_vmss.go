@@ -169,7 +169,10 @@ func (ss *scaleSet) DetachDisk(diskName, diskURI string, nodeName types.NodeName
 		klog.Errorf("detach azure disk: disk %s not found, diskURI: %s", diskName, diskURI)
 	}
 	if bFoundDisk {
-		ss.controllerCommon.vmLockMap.TryEntry(LunLockKey(string(nodeName), int(lun)))
+		bLunIsBusy := ! ss.controllerCommon.vmLockMap.TryEntry(LunLockKey(string(nodeName), int(lun)))
+		if bLunIsBusy {
+			return fmt.Errorf("detach %v from node %q: Error - lun %d is busy, previous attach/detach operation still not completed", diskURI, nodeName, lun)
+		}
 	}
 
 	newVM := compute.VirtualMachineScaleSetVM{
