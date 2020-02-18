@@ -171,7 +171,7 @@ func (ss *scaleSet) DetachDisk(diskName, diskURI string, nodeName types.NodeName
 	if bFoundDisk {
 		bLunIsBusy := ! ss.controllerCommon.vmLockMap.TryEntry(LunLockKey(string(nodeName), int(lun)))
 		if bLunIsBusy {
-			return fmt.Errorf("detach %v from node %q: Error - lun %d is busy, previous attach/detach operation still not completed", diskURI, nodeName, lun)
+		  return fmt.Errorf("detach %v from node %q: Error - lun %d is busy, previous attach/detach operation still not completed. Retriable: true", diskURI, nodeName, lun)
 		}
 	}
 
