@@ -438,7 +438,7 @@ func (d *Driver) findDiskAndLun(devicePath string) (string, int32, error) {
 	scsiHostRescan(io, d.mounter.Exec)
 
 	newDevicePath := ""
-	err = wait.Poll(1*time.Second, 2*time.Minute, func() (bool, error) {
+	err = wait.Poll(2*time.Second, 2*time.Minute, func() (bool, error) {
 		var err error
 		if newDevicePath, err = findDiskByLun(int(lun), io, d.mounter.Exec); err != nil {
 			return false, fmt.Errorf("azureDisk - findDiskByLun(%v) failed with error(%s)", lun, err)
@@ -449,7 +449,8 @@ func (d *Driver) findDiskAndLun(devicePath string) (string, int32, error) {
 			return true, nil
 		}
 
-		return false, fmt.Errorf("azureDisk - findDiskByLun(%v) failed within timeout", lun)
+		//return false, fmt.Errorf("azureDisk - findDiskByLun(%v) failed within timeout", lun)
+		return false, nil
 	})
 	if err != nil {
 		return "", -1, err

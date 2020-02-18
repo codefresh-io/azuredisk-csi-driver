@@ -21,7 +21,8 @@ import (
 	"os"
 
 	"k8s.io/klog"
-	"k8s.io/legacy-cloud-providers/azure"
+	"sigs.k8s.io/azuredisk-csi-driver/pkg/azure"
+	//"k8s.io/legacy-cloud-providers/azure"
 )
 
 // GetCloudProvider get Azure Cloud Provider
